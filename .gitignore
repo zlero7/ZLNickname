@@ -1,0 +1,17 @@
+# Build output
+build/
+out/
+
+# Gradle cache
+.gradle/
+
+# Local dependency jars (not for version control)
+libs/
+
+# IDE - IntelliJ IDEA
+.idea/
+!.idea/.gitignore
+
+# OS
+.DS_Store
+Thumbs.db
