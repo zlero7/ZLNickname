@@ -6,7 +6,10 @@ import io.zlero.cRFramework.core.component.annotation.Component
 import net.wesjd.anvilgui.AnvilGUI
 
 @Component
-class NicknameCommand(private val nicknameManager: NicknameManager) {
+class NicknameCommand(
+    private val nicknameManager: NicknameManager,
+    private val config: NicknameConfig
+) {
 
     private val plugin get() = nicknameManager.plugin
 
@@ -58,9 +61,7 @@ class NicknameCommand(private val nicknameManager: NicknameManager) {
                 if (slot != AnvilGUI.Slot.OUTPUT) return@onClick emptyList()
 
                 val newNick = snapshot.text.trim()
-
-                // 유효성 검사 (길이, 빈 값 등)
-                val error = nicknameManager.validateNickname(newNick)
+                val error   = nicknameManager.validateNickname(newNick)
                 if (error != null) {
                     return@onClick listOf(AnvilGUI.ResponseAction.replaceInputText(error))
                 }
@@ -109,9 +110,7 @@ class NicknameCommand(private val nicknameManager: NicknameManager) {
         val target = nicknameManager.findPlayer(ctx.string(1))
             ?: run { ctx.sender.sendMessage("§c플레이어를 찾을 수 없습니다."); return }
 
-        val raw = ctx.joinFrom(2)
-
-        // 유효성 검사 (길이, 빈 값 등)
+        val raw   = ctx.joinFrom(2)
         val error = nicknameManager.validateNickname(raw)
         if (error != null) {
             ctx.sender.sendMessage("§c$error")
@@ -134,11 +133,12 @@ class NicknameCommand(private val nicknameManager: NicknameManager) {
     // ─────────────── 도움말 ───────────────
 
     private fun sendHelp(ctx: CommandContext) {
-        val s = ctx.sender
+        val s   = ctx.sender
+        val max = config.maxNicknameLength
         s.sendMessage("§e══════ 닉네임 명령어 (관리자) ══════")
         s.sendMessage("§f/닉네임 설정 §7<플레이어>  §f- §7해당 플레이어에게 닉네임 변경 GUI")
         s.sendMessage("§f/닉네임 초기화 §7<플레이어>  §f- §7닉네임 초기화")
-        s.sendMessage("§f/닉네임 관리 §7<플레이어> <닉네임>  §f- §7직접 닉네임 설정 §7(§e&§7색상코드 가능, 최대 ${NicknameManager.MAX_NICK_LENGTH}자)")
+        s.sendMessage("§f/닉네임 관리 §7<플레이어> <닉네임>  §f- §7직접 닉네임 설정 §7(§e&§7색상코드 가능, 최대 §e${max}§7자)")
         s.sendMessage("§f/닉네임 저장  §f- §7데이터 파일 저장")
     }
 }
