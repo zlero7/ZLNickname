@@ -58,6 +58,8 @@ class CommandNicknameInterceptor(private val nicknameManager: NicknameManager) {
         }
 
         event.completions = names
+        // handled = true: Brigadier 의 재처리를 막아 빨간색 표시 및 결과 덮어쓰기 방지
+        event.isHandled = true
     }
 
     @Subscribe(priority = EventPriority.LOW, ignoreCancelled = true)
