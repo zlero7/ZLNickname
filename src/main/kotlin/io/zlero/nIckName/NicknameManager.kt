@@ -61,9 +61,11 @@ class NicknameManager(
      */
     fun validateNickname(raw: String): String? {
         if (raw.isBlank()) return "닉네임은 비어있을 수 없습니다."
+        // raw 자체도 길이 제한 (색상 코드 도배로 DB VARCHAR 초과 방지)
+        if (raw.length > 200) return "닉네임 입력이 너무 깁니다. (최대 200자)"
         val plain = PLAIN_TEXT.serialize(LEGACY_AMPERSAND.deserialize(raw))
         if (plain.isBlank()) return "색상 코드 제거 후 닉네임이 비어있습니다."
-        val max = config.maxNicknameLength
+        val max = config.maxNicknameLength.coerceIn(1, 64)
         if (plain.length > max)
             return "닉네임은 ${max}자를 초과할 수 없습니다. (현재 ${plain.length}자)"
         return null

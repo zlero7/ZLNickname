@@ -61,6 +61,10 @@ class NicknameCommand(
             .onClick { slot, snapshot ->
                 if (slot != AnvilGUI.Slot.OUTPUT) return@onClick emptyList()
 
+                if (!target.isOnline) {
+                    return@onClick listOf(AnvilGUI.ResponseAction.replaceInputText("플레이어가 오프라인입니다."))
+                }
+
                 val newNick = snapshot.text.trim()
                 val error   = nicknameManager.validateNickname(newNick)
                 if (error != null) {
