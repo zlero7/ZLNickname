@@ -277,7 +277,7 @@ class NicknameManager(
         return when (args.size) {
             1 -> subs.filter { it.startsWith(current) }
             2 -> when (args[0]) {
-                "설정", "초기화", "관리" -> onlinePlayerNames(current)
+                "설정", "초기화", "관리" -> onlineDisplayNames(current)
                 else                    -> emptyList()
             }
             3 -> if (args[0] == "관리") {
@@ -291,10 +291,11 @@ class NicknameManager(
         }
     }
 
-    private fun onlinePlayerNames(current: String): List<String> =
+    /** 온라인 플레이어의 닉네임(또는 실제 이름)을 prefix 로 필터링해 반환합니다. */
+    fun onlineDisplayNames(prefix: String): List<String> =
         Bukkit.getOnlinePlayers()
             .map { p -> nicknameMap[p.uniqueId]?.plainText() ?: p.name }
-            .filter { it.startsWith(current, ignoreCase = true) }
+            .filter { it.startsWith(prefix, ignoreCase = true) }
 
     // ─────────────── ArmorStand 관리 ───────────────
 
