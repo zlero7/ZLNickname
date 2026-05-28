@@ -79,23 +79,31 @@ depend: [CRFramework]
 
 ---
 
-## 명령어 닉네임 변환
+## 명령어 닉네임 변환 & 탭 완성
 
-아래 명령어에서 대상 인자에 닉네임을 입력하면 자동으로 실제 플레이어 이름으로 변환됩니다.
+아래 명령어는 두 가지 기능이 모두 적용됩니다.
+
+- **탭 완성**: 첫 번째 인자 입력 시 실제 이름 대신 닉네임 목록이 표시됩니다.
+- **자동 변환**: 닉네임으로 입력하면 실행 전에 자동으로 실제 플레이어 이름으로 교체됩니다.
 
 | 분류 | 명령어 |
 |------|--------|
-| 메시지 | `msg`, `tell`, `whisper`, `dm`, `pm` 등 |
-| 텔레포트 | `tp`, `tpa`, `tpask`, `tphere` 등 |
+| 메시지 | `msg`, `m`, `tell`, `t`, `w`, `whisper`, `dm`, `pm`, `message`, `emsg`, `etell` |
+| 텔레포트 | `tp`, `tpa`, `tpask`, `tpahere`, `tphere` |
 | 이코노미 | `pay`, `givemoney`, `takemoney` |
-| 관리 | `ban`, `kick`, `mute`, `warn`, `jail` 등 |
-| 기타 | `invsee`, `trade`, `heal`, `ping`, `seen` 등 |
+| 어드민 | `ban`, `tempban`, `unban`, `kick`, `mute`, `unmute`, `tempmute`, `warn`, `jail`, `unjail` |
+| 인벤토리/상호작용 | `invsee`, `ec`, `enderchest`, `trade`, `duel`, `heal`, `feed`, `freeze`, `unfreeze` |
+| 기타 | `seen`, `ping`, `profile` |
 
 ```
 # Steve의 닉네임이 "스티브"인 경우
-/msg 스티브 안녕하세요   →   /msg Steve 안녕하세요  (자동 변환)
-/tpa 스티브              →   /tpa Steve
+/w [탭]          →   닉네임 목록 표시 ("스티브" 포함)
+/w 스티브 안녕   →   /w Steve 안녕  (자동 변환)
+/tpa 스티브      →   /tpa Steve
+/ban 스티브      →   /ban Steve
 ```
+
+> 위 목록에 없는 명령어를 추가하려면 `CommandNicknameInterceptor.kt` 의 `targetFirstCommands` 에 명령어 이름을 추가하세요.
 
 ---
 
