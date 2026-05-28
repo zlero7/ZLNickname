@@ -1,10 +1,10 @@
 package io.zlero.nIckName
 
+import com.destroystokyo.paper.event.server.AsyncTabCompleteEvent
 import io.zlero.cRFramework.core.component.annotation.Component
 import io.zlero.cRFramework.listener.annotation.Subscribe
 import org.bukkit.event.EventPriority
 import org.bukkit.event.player.PlayerCommandPreprocessEvent
-import org.bukkit.event.server.TabCompleteEvent
 
 @Component
 class CommandNicknameInterceptor(private val nicknameManager: NicknameManager) {
@@ -24,37 +24,40 @@ class CommandNicknameInterceptor(private val nicknameManager: NicknameManager) {
         "seen", "ping", "profile"
     )
 
-    /**
-     * targetFirstCommands 의 첫 번째 인자(플레이어 이름) 탭 완성을 닉네임으로 교체합니다.
-     * 서버 기본 완성(실제 이름)을 완전히 대체하므로 CommandNicknameInterceptor 가
-     * 닉네임 → 실제 이름 변환을 이미 담당하고 있는 명령어에 한해서만 적용합니다.
-     */
     // 두 번째 인자도 플레이어 이름인 명령어 (/tp <대상> <목적지>)
     private val twoPlayerCommands = setOf("tp")
 
+    /**
+     * Paper 의 AsyncTabCompleteEvent 를 인터셉트해 닉네임으로 교체합니다.
+     * Bukkit 의 TabCompleteEvent 는 EssentialsX 등 다른 플러그인이 AsyncTabCompleteEvent 에서
+     * 먼저 완성을 주입하면 실질적으로 무시되기 때문에 이 이벤트를 사용합니다.
+     * HIGH 우선순위로 등록하여 다른 플러그인이 넣은 실제 이름 완성을 닉네임으로 덮어씁니다.
+     */
     @Subscribe(priority = EventPriority.HIGH)
-    fun onTabComplete(event: TabCompleteEvent) {
+    fun onTabComplete(event: AsyncTabCompleteEvent) {
+        if (!event.isCommand) return
         val buffer = event.buffer
         if (!buffer.startsWith("/")) return
 
-        // limit=4 으로 분리: [명령어, 첫째인자, 둘째인자, 나머지]
+        // limit=4: [명령어, 첫째인자, 둘째인자, 나머지]
         val parts = buffer.substring(1).split(" ", limit = 4)
         if (parts.isEmpty()) return
 
         val cmdName = parts[0].lowercase().substringAfter(":")
 
-        when (parts.size) {
+        val names: List<String> = when (parts.size) {
             2 -> {
-                // 첫 번째 인자 완성
                 if (cmdName !in targetFirstCommands) return
-                event.completions = nicknameManager.onlineDisplayNames(parts[1])
+                nicknameManager.onlineDisplayNames(parts[1])
             }
             3 -> {
-                // 두 번째 인자 완성 (/tp <대상> <목적지>)
                 if (cmdName !in twoPlayerCommands) return
-                event.completions = nicknameManager.onlineDisplayNames(parts[2])
+                nicknameManager.onlineDisplayNames(parts[2])
             }
+            else -> return
         }
+
+        event.completions = names
     }
 
     @Subscribe(priority = EventPriority.LOW, ignoreCancelled = true)
