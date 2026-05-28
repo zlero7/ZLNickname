@@ -32,7 +32,8 @@ private val PLAIN_TEXT       = PlainTextComponentSerializer.plainText()
 class NicknameManager(
     val plugin: NicknamePlugin,
     private val config: NicknameConfig,
-    private val storage: NicknameStorage
+    private val storage: NicknameStorage,
+    private val dbStorage: NicknameDbStorage
 ) {
 
     /** raw: & 코드 원본 (GUI 미리채우기·저장), full: § 코드 변환본 (저장·메시지) */
@@ -115,9 +116,15 @@ class NicknameManager(
                 .forEach { it.remove() }
         }
 
-        val entries = runCatching { storage.loadAll() }
-            .onFailure { plugin.logger.warning("닉네임 로드 실패: ${it.message}") }
-            .getOrDefault(emptyMap())
+        val entries = if (config.storageType == "yaml") {
+            runCatching { storage.loadAll() }
+                .onFailure { plugin.logger.warning("닉네임 로드 실패 (yaml): ${it.message}") }
+                .getOrDefault(emptyMap())
+        } else {
+            runCatching { dbStorage.loadAll() }
+                .onFailure { plugin.logger.warning("닉네임 로드 실패 (${config.storageType}): ${it.message}") }
+                .getOrDefault(emptyMap())
+        }
 
         entries.forEach { (uuid, entry) ->
             val data = NicknameData(entry.raw, entry.full)
@@ -145,8 +152,13 @@ class NicknameManager(
         val entries = nicknameMap.mapValues { (_, data) ->
             NicknameStorage.Entry(data.raw, data.full)
         }
-        runCatching { storage.saveAll(entries) }
-            .onFailure { plugin.logger.warning("닉네임 저장 실패: ${it.message}") }
+        if (config.storageType == "yaml") {
+            runCatching { storage.saveAll(entries) }
+                .onFailure { plugin.logger.warning("닉네임 저장 실패 (yaml): ${it.message}") }
+        } else {
+            runCatching { dbStorage.saveAll(entries) }
+                .onFailure { plugin.logger.warning("닉네임 저장 실패 (${config.storageType}): ${it.message}") }
+        }
     }
 
     // ─────────────── 이벤트 리스너 ───────────────

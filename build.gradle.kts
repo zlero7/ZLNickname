@@ -1,5 +1,5 @@
 plugins {
-    kotlin("jvm") version "2.3.0"
+    kotlin("jvm") version "2.3.10"
     id("com.gradleup.shadow") version "8.3.0"
     id("xyz.jpenilla.run-paper") version "2.3.1"
 }
@@ -22,14 +22,25 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
-    compileOnly("com.github.zlero7:CRFramework:v1.0.3")
+    compileOnly("com.github.zlero7:CRFramework:v1.0.6")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+
+    // Exposed + HikariCP — 컴파일 전용, 런타임은 CRFramework JAR에서 제공
+    compileOnly("org.jetbrains.exposed:exposed-core:0.44.1")
+    compileOnly("org.jetbrains.exposed:exposed-jdbc:0.44.1")
+    compileOnly("com.zaxxer:HikariCP:5.1.0")
+
     implementation("net.wesjd:anvilgui:1.9.2-SNAPSHOT")
+
+    // JDBC 드라이버 — shadowJar 에 번들
+    implementation("org.xerial:sqlite-jdbc:3.47.1.0")
+    implementation("com.h2database:h2:2.3.232")
+    implementation("com.mysql:mysql-connector-j:8.3.0")
 }
 
 tasks {
     runServer {
-        minecraftVersion("1.20")
+        minecraftVersion("1.20.4")
     }
 
     shadowJar {
@@ -39,11 +50,13 @@ tasks {
             exclude(dependency("org.jetbrains.kotlin:kotlin-reflect"))
             exclude(dependency("org.jetbrains:annotations"))
         }
+        // JDBC SPI 등록 파일(META-INF/services) 병합
+        mergeServiceFiles()
         duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     }
 }
 
-val targetJavaVersion = 17
+val targetJavaVersion = 21
 kotlin {
     jvmToolchain(targetJavaVersion)
 }

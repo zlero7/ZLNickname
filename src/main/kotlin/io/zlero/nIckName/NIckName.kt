@@ -7,6 +7,7 @@ class NicknamePlugin : CRPlugin() {
     override fun components(): List<KClass<*>> = listOf(
         NicknameConfig::class,
         NicknameStorage::class,
+        NicknameDbStorage::class,
         NicknameManager::class,
         NicknameCommand::class,
         CommandNicknameInterceptor::class

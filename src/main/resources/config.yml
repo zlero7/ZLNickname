@@ -11,3 +11,18 @@ armor-stand:
   offset-standing: 1.9
   # 웅크림 상태 Y 오프셋
   offset-sneaking: 1.6
+
+storage:
+  # 저장 방식: yaml | sqlite | mysql | h2
+  type: yaml
+
+  # SQLite / H2 파일 경로 (플러그인 데이터 폴더 기준, 확장자 제외)
+  file: data/nicknames
+
+  mysql:
+    host: localhost
+    port: 3306
+    database: minecraft
+    username: root
+    password: ""
+    pool-size: 5
