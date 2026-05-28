@@ -29,20 +29,32 @@ class CommandNicknameInterceptor(private val nicknameManager: NicknameManager) {
      * 서버 기본 완성(실제 이름)을 완전히 대체하므로 CommandNicknameInterceptor 가
      * 닉네임 → 실제 이름 변환을 이미 담당하고 있는 명령어에 한해서만 적용합니다.
      */
+    // 두 번째 인자도 플레이어 이름인 명령어 (/tp <대상> <목적지>)
+    private val twoPlayerCommands = setOf("tp")
+
     @Subscribe(priority = EventPriority.HIGH)
     fun onTabComplete(event: TabCompleteEvent) {
         val buffer = event.buffer
         if (!buffer.startsWith("/")) return
 
-        // limit=3 으로 분리: [명령어, 첫째인자, 나머지]
-        val parts = buffer.substring(1).split(" ", limit = 3)
-        // 첫 번째 인자(플레이어 이름)를 완성 중인 경우에만 처리
-        if (parts.size != 2) return
+        // limit=4 으로 분리: [명령어, 첫째인자, 둘째인자, 나머지]
+        val parts = buffer.substring(1).split(" ", limit = 4)
+        if (parts.isEmpty()) return
 
         val cmdName = parts[0].lowercase().substringAfter(":")
-        if (cmdName !in targetFirstCommands) return
 
-        event.completions = nicknameManager.onlineDisplayNames(parts[1])
+        when (parts.size) {
+            2 -> {
+                // 첫 번째 인자 완성
+                if (cmdName !in targetFirstCommands) return
+                event.completions = nicknameManager.onlineDisplayNames(parts[1])
+            }
+            3 -> {
+                // 두 번째 인자 완성 (/tp <대상> <목적지>)
+                if (cmdName !in twoPlayerCommands) return
+                event.completions = nicknameManager.onlineDisplayNames(parts[2])
+            }
+        }
     }
 
     @Subscribe(priority = EventPriority.LOW, ignoreCancelled = true)
