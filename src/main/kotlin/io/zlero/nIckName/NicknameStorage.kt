@@ -37,4 +37,17 @@ class NicknameStorage(plugin: JavaPlugin) : CRYamlConfiguration(plugin, "nicknam
         }
         save()
     }
+
+    /** 단일 항목을 즉시 저장합니다. */
+    fun saveEntry(uuid: UUID, entry: Entry) {
+        config.set("$uuid.raw",  entry.raw)
+        config.set("$uuid.full", entry.full)
+        save()
+    }
+
+    /** 단일 항목을 즉시 삭제합니다. */
+    fun removeEntry(uuid: UUID) {
+        config.set(uuid.toString(), null)
+        save()
+    }
 }

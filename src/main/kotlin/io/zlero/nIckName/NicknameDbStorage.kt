@@ -114,6 +114,46 @@ class NicknameDbStorage(
         }
     }
 
+    /** 단일 항목을 즉시 저장(upsert)합니다. DELETE+INSERT 트랜잭션으로 모든 DB 지원. */
+    fun upsert(uuid: UUID, entry: NicknameStorage.Entry) {
+        if (!isActive) return
+        withConnection { conn ->
+            val prevAutoCommit = conn.autoCommit
+            conn.autoCommit = false
+            try {
+                conn.prepareStatement("DELETE FROM crnickname WHERE uuid = ?").use { stmt ->
+                    stmt.setString(1, uuid.toString())
+                    stmt.executeUpdate()
+                }
+                conn.prepareStatement(
+                    "INSERT INTO crnickname (uuid, raw, full) VALUES (?, ?, ?)"
+                ).use { stmt ->
+                    stmt.setString(1, uuid.toString())
+                    stmt.setString(2, entry.raw)
+                    stmt.setString(3, entry.full)
+                    stmt.executeUpdate()
+                }
+                conn.commit()
+            } catch (e: Exception) {
+                runCatching { conn.rollback() }
+                throw e
+            } finally {
+                conn.autoCommit = prevAutoCommit
+            }
+        }
+    }
+
+    /** 단일 항목을 즉시 삭제합니다. */
+    fun remove(uuid: UUID) {
+        if (!isActive) return
+        withConnection { conn ->
+            conn.prepareStatement("DELETE FROM crnickname WHERE uuid = ?").use { stmt ->
+                stmt.setString(1, uuid.toString())
+                stmt.executeUpdate()
+            }
+        }
+    }
+
     // ─────────────── 내부 유틸 ───────────────
 
     /**

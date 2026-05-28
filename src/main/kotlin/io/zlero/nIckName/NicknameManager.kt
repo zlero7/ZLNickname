@@ -83,6 +83,8 @@ class NicknameManager(
         player.playerListName(component)
         hideNameTag(player)
         spawnOrUpdateArmorStand(player, component)
+
+        persistSingle(player.uniqueId, data)
     }
 
     fun resetNickname(player: Player) {
@@ -91,6 +93,23 @@ class NicknameManager(
         player.playerListName(null)
         showNameTag(player)
         removeArmorStand(player)
+
+        removeSingle(player.uniqueId)
+    }
+
+    private fun persistSingle(uuid: UUID, data: NicknameData) {
+        val entry = NicknameStorage.Entry(data.raw, data.full)
+        runCatching {
+            if (config.storageType == "yaml") storage.saveEntry(uuid, entry)
+            else dbStorage.upsert(uuid, entry)
+        }.onFailure { plugin.logger.warning("닉네임 즉시 저장 실패 ($uuid): ${it.message}") }
+    }
+
+    private fun removeSingle(uuid: UUID) {
+        runCatching {
+            if (config.storageType == "yaml") storage.removeEntry(uuid)
+            else dbStorage.remove(uuid)
+        }.onFailure { plugin.logger.warning("닉네임 즉시 삭제 실패 ($uuid): ${it.message}") }
     }
 
     /** § 코드 포함 닉네임 문자열 (메시지 조합용) */
@@ -149,6 +168,9 @@ class NicknameManager(
     }
 
     fun reload() {
+        // 0. 현재 데이터를 기존 스토리지에 먼저 저장 (리로드 중 유실 방지)
+        saveNicknames()
+
         // 1. 기존 ArmorStand 제거 + 플레이어 디스플레이 이름 초기화
         armorStandMap.forEach { (uuid, stand) ->
             stand.remove()
