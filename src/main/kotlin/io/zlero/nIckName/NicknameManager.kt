@@ -166,7 +166,14 @@ class NicknameManager(
         nicknameMap.clear()
         nickToUUID.clear()
 
-        // 4. 스토리지에서 재로드 (온라인 플레이어에도 즉시 적용)
+        // 4. config.yml 디스크에서 재로드 (storage.type 변경 등 반영)
+        config.reload()
+
+        // 5. DB 스토리지 재연결 (storage.type 이 변경된 경우 새 파일/연결 생성)
+        dbStorage.disconnect()
+        dbStorage.connect()
+
+        // 6. 스토리지에서 재로드 (온라인 플레이어에도 즉시 적용)
         loadNicknames()
     }
 
