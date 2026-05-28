@@ -5,20 +5,16 @@ import com.zaxxer.hikari.HikariDataSource
 import io.zlero.cRFramework.core.component.annotation.Component
 import io.zlero.cRFramework.core.component.annotation.Setup
 import io.zlero.cRFramework.core.component.annotation.Teardown
-import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.SchemaUtils
-import org.jetbrains.exposed.sql.batchInsert
-import org.jetbrains.exposed.sql.deleteAll
-import org.jetbrains.exposed.sql.selectAll
-import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
+import java.sql.Connection
+import java.sql.DriverManager
 import java.util.UUID
 
 /**
  * DB 기반 닉네임 스토리지 (SQLite / MySQL / H2).
- * storage.type == "yaml" 일 때는 @Setup/@Teardown 모두 no-op 이며,
- * loadAll() / saveAll() 은 항상 빈 결과를 반환/무시합니다.
- * NicknameManager 가 config.storageType 을 보고 어느 스토리지를 사용할지 결정합니다.
+ * Exposed 대신 순수 JDBC를 사용하여 CRFramework Exposed 트랜잭션과의
+ * 전역 기본 DB 충돌을 방지합니다.
+ * storage.type == "yaml" 일 때는 모든 메서드가 no-op 입니다.
  */
 @Component
 class NicknameDbStorage(
@@ -26,12 +22,10 @@ class NicknameDbStorage(
     private val config: NicknameConfig
 ) {
 
-    private var dataSource: HikariDataSource? = null
-    private var database: Database? = null
+    private var hikari: HikariDataSource? = null
+    private var singleConn: Connection? = null   // SQLite 전용 단일 커넥션
 
-    /** YAML 이외의 DB 스토리지가 활성화되어 있으면 true */
-    val isActive: Boolean
-        get() = config.storageType != "yaml"
+    val isActive: Boolean get() = config.storageType != "yaml"
 
     // ─────────────── 라이프사이클 ───────────────
 
@@ -51,84 +45,128 @@ class NicknameDbStorage(
                     return
                 }
             }
-            transaction(database) {
-                SchemaUtils.createMissingTablesAndColumns(NicknameTable)
-            }
+            createTable()
             plugin.logger.info("DB 스토리지 연결 완료 (${config.storageType})")
-        }.onFailure {
-            plugin.logger.severe("DB 스토리지 연결 실패: ${it.message}")
+        }.onFailure { e ->
+            plugin.logger.severe("DB 스토리지 연결 실패: ${e.message}")
             plugin.logger.severe("yaml 저장 방식으로 대체합니다.")
-            dataSource?.close()
-            dataSource = null
-            database = null
+            hikari?.close()
+            hikari = null
+            singleConn?.close()
+            singleConn = null
         }
     }
 
     @Teardown
     fun disconnect() {
-        dataSource?.close()
-        dataSource = null
-        database = null
+        singleConn?.close()
+        singleConn = null
+        hikari?.close()
+        hikari = null
     }
 
     // ─────────────── 공개 API ───────────────
 
     fun loadAll(): Map<UUID, NicknameStorage.Entry> {
-        val db = database ?: return emptyMap()
-        return transaction(db) {
-            NicknameTable.selectAll().associate { row ->
-                UUID.fromString(row[NicknameTable.uuid]) to
-                    NicknameStorage.Entry(row[NicknameTable.raw], row[NicknameTable.full])
-            }
-        }
-    }
-
-    fun saveAll(data: Map<UUID, NicknameStorage.Entry>) {
-        val db = database ?: return
-        transaction(db) {
-            NicknameTable.deleteAll()
-            if (data.isNotEmpty()) {
-                NicknameTable.batchInsert(data.entries) { (uuid, entry) ->
-                    this[NicknameTable.uuid] = uuid.toString()
-                    this[NicknameTable.raw]  = entry.raw
-                    this[NicknameTable.full] = entry.full
+        if (!isActive) return emptyMap()
+        return withConnection { conn ->
+            conn.prepareStatement("SELECT uuid, raw, full FROM crnickname").use { stmt ->
+                stmt.executeQuery().use { rs ->
+                    buildMap {
+                        while (rs.next()) {
+                            val uuid = runCatching { UUID.fromString(rs.getString("uuid")) }
+                                .getOrNull() ?: continue
+                            put(uuid, NicknameStorage.Entry(rs.getString("raw"), rs.getString("full")))
+                        }
+                    }
                 }
             }
         }
     }
 
-    // ─────────────── 내부 연결 메서드 ───────────────
+    fun saveAll(data: Map<UUID, NicknameStorage.Entry>) {
+        if (!isActive) return
+        withConnection { conn ->
+            val prevAutoCommit = conn.autoCommit
+            conn.autoCommit = false
+            try {
+                conn.createStatement().use { it.execute("DELETE FROM crnickname") }
+                if (data.isNotEmpty()) {
+                    conn.prepareStatement(
+                        "INSERT INTO crnickname (uuid, raw, full) VALUES (?, ?, ?)"
+                    ).use { stmt ->
+                        data.forEach { (uuid, entry) ->
+                            stmt.setString(1, uuid.toString())
+                            stmt.setString(2, entry.raw)
+                            stmt.setString(3, entry.full)
+                            stmt.addBatch()
+                        }
+                        stmt.executeBatch()
+                    }
+                }
+                conn.commit()
+            } catch (e: Exception) {
+                runCatching { conn.rollback() }
+                throw e
+            } finally {
+                conn.autoCommit = prevAutoCommit
+            }
+        }
+    }
+
+    // ─────────────── 내부 유틸 ───────────────
+
+    /**
+     * SQLite 는 단일 커넥션을 재사용하고, MySQL / H2 는 풀에서 빌려 블록 후 반환합니다.
+     */
+    private fun <T> withConnection(block: (Connection) -> T): T {
+        val sc = singleConn
+        return if (sc != null) {
+            block(sc)
+        } else {
+            hikari!!.connection.use { block(it) }
+        }
+    }
+
+    private fun createTable() {
+        withConnection { conn ->
+            conn.createStatement().use { stmt ->
+                stmt.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS crnickname (
+                        uuid VARCHAR(36) PRIMARY KEY,
+                        raw  VARCHAR(256) NOT NULL,
+                        full VARCHAR(512) NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+    }
 
     private fun connectSqlite() {
         val dbFile = resolveFile("${config.dbFile}.db")
-        // SQLite 는 단일 연결로 충분 — HikariCP 없이 직접 연결
-        database = Database.connect(
-            url    = "jdbc:sqlite:${dbFile.absolutePath}",
-            driver = "org.sqlite.JDBC"
-        )
+        // CRFramework 가 sqlite-jdbc 를 번들 — 별도 드라이버 로드 불필요
+        singleConn = DriverManager.getConnection("jdbc:sqlite:${dbFile.absolutePath}")
     }
 
     private fun connectMysql() {
         val hc = HikariConfig().apply {
             jdbcUrl = buildString {
                 append("jdbc:mysql://")
-                append(config.mysqlHost)
-                append(':')
-                append(config.mysqlPort)
-                append('/')
-                append(config.mysqlDatabase)
+                append(config.mysqlHost).append(':').append(config.mysqlPort)
+                append('/').append(config.mysqlDatabase)
                 append("?useSSL=false&allowPublicKeyRetrieval=true")
                 append("&serverTimezone=UTC&characterEncoding=utf8mb4")
             }
-            driverClassName = "com.mysql.cj.jdbc.Driver"
-            username        = config.mysqlUsername
-            password        = config.mysqlPassword
-            maximumPoolSize = config.mysqlPoolSize
-            minimumIdle     = 1
+            driverClassName   = "com.mysql.cj.jdbc.Driver"
+            username          = config.mysqlUsername
+            password          = config.mysqlPassword
+            maximumPoolSize   = config.mysqlPoolSize
+            minimumIdle       = 1
             connectionTimeout = 10_000
         }
-        dataSource = HikariDataSource(hc)
-        database   = Database.connect(dataSource!!)
+        hikari = HikariDataSource(hc)
     }
 
     private fun connectH2() {
@@ -139,11 +177,9 @@ class NicknameDbStorage(
             maximumPoolSize = 2
             minimumIdle     = 1
         }
-        dataSource = HikariDataSource(hc)
-        database   = Database.connect(dataSource!!)
+        hikari = HikariDataSource(hc)
     }
 
-    /** 플러그인 데이터 폴더 기준 파일 경로를 반환하고 부모 디렉터리를 보장합니다. */
     private fun resolveFile(relativePath: String): File =
         File(plugin.dataFolder, relativePath).also { it.parentFile?.mkdirs() }
 }

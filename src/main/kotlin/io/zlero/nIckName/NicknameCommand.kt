@@ -34,6 +34,7 @@ class NicknameCommand(
             "초기화" -> handleReset(ctx)
             "관리"   -> handleAdmin(ctx)
             "저장"   -> handleSave(ctx)
+            "리로드" -> handleReload(ctx)
             else     -> { ctx.sender.sendMessage("§c알 수 없는 서브 명령어입니다."); sendHelp(ctx) }
         }
     }
@@ -130,6 +131,13 @@ class NicknameCommand(
         ctx.sender.sendMessage("§a닉네임 데이터를 저장했습니다.")
     }
 
+    // ─────────────── 리로드 ───────────────
+
+    private fun handleReload(ctx: CommandContext) {
+        nicknameManager.reload()
+        ctx.sender.sendMessage("§a설정과 닉네임 데이터를 다시 불러왔습니다.")
+    }
+
     // ─────────────── 도움말 ───────────────
 
     private fun sendHelp(ctx: CommandContext) {
@@ -140,5 +148,6 @@ class NicknameCommand(
         s.sendMessage("§f/닉네임 초기화 §7<플레이어>  §f- §7닉네임 초기화")
         s.sendMessage("§f/닉네임 관리 §7<플레이어> <닉네임>  §f- §7직접 닉네임 설정 §7(§e&§7색상코드 가능, 최대 §e${max}§7자)")
         s.sendMessage("§f/닉네임 저장  §f- §7데이터 파일 저장")
+        s.sendMessage("§f/닉네임 리로드  §f- §7config.yml 및 닉네임 데이터 리로드")
     }
 }

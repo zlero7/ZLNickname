@@ -25,15 +25,13 @@ dependencies {
     compileOnly("com.github.zlero7:CRFramework:v1.0.6")
     compileOnly("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
 
-    // Exposed + HikariCP — 컴파일 전용, 런타임은 CRFramework JAR에서 제공
-    compileOnly("org.jetbrains.exposed:exposed-core:0.44.1")
-    compileOnly("org.jetbrains.exposed:exposed-jdbc:0.44.1")
+    // HikariCP — 컴파일 전용, 런타임은 CRFramework JAR에서 제공
     compileOnly("com.zaxxer:HikariCP:5.1.0")
 
     implementation("net.wesjd:anvilgui:1.9.2-SNAPSHOT")
 
     // JDBC 드라이버 — shadowJar 에 번들
-    implementation("org.xerial:sqlite-jdbc:3.47.1.0")
+    // SQLite: CRFramework 가 sqlite-jdbc 를 번들하므로 별도 포함 불필요
     implementation("com.h2database:h2:2.3.232")
     implementation("com.mysql:mysql-connector-j:8.3.0")
 }

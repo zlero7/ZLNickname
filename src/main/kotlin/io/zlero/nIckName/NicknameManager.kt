@@ -148,6 +148,28 @@ class NicknameManager(
         saveNicknames()
     }
 
+    fun reload() {
+        // 1. 기존 ArmorStand 제거 + 플레이어 디스플레이 이름 초기화
+        armorStandMap.forEach { (uuid, stand) ->
+            stand.remove()
+            Bukkit.getPlayer(uuid)?.apply {
+                displayName(null)
+                playerListName(null)
+            }
+        }
+        armorStandMap.clear()
+
+        // 2. 닉네임이 설정된 온라인 플레이어 이름표 원복
+        nicknameMap.keys.mapNotNull { Bukkit.getPlayer(it) }.forEach { showNameTag(it) }
+
+        // 3. 닉네임 맵 초기화
+        nicknameMap.clear()
+        nickToUUID.clear()
+
+        // 4. 스토리지에서 재로드 (온라인 플레이어에도 즉시 적용)
+        loadNicknames()
+    }
+
     fun saveNicknames() {
         val entries = nicknameMap.mapValues { (_, data) ->
             NicknameStorage.Entry(data.raw, data.full)
@@ -218,7 +240,7 @@ class NicknameManager(
     private fun buildSubcompletions(args: List<String>, sender: CommandSender): List<String> {
         if (!sender.hasPermission("nickname.admin")) return emptyList()
 
-        val subs    = listOf("설정", "초기화", "관리", "저장")
+        val subs    = listOf("설정", "초기화", "관리", "저장", "리로드")
         val current = args.lastOrNull() ?: ""
 
         return when (args.size) {
