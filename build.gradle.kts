@@ -18,6 +18,7 @@ repositories {
     maven("https://repo.codemc.io/repository/maven-public/")
     maven("https://repo.codemc.io/repository/maven-snapshots/")
     maven("https://jitpack.io")
+    maven("https://repo.extendedclip.com/content/repositories/placeholderapi/")
 }
 
 dependencies {
@@ -27,6 +28,7 @@ dependencies {
 
     // HikariCP — 컴파일 전용, 런타임은 CRFramework JAR에서 제공
     compileOnly("com.zaxxer:HikariCP:5.1.0")
+    compileOnly("me.clip:placeholderapi:2.11.6")
 
     implementation("net.wesjd:anvilgui:1.9.2-SNAPSHOT")
 

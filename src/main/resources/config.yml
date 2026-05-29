@@ -6,12 +6,6 @@ nickname:
   # 색상 코드 제거 후 최대 닉네임 글자 수
   max-length: 16
 
-armor-stand:
-  # 일반 상태 Y 오프셋 (플레이어 발 기준)
-  offset-standing: 1.9
-  # 웅크림 상태 Y 오프셋
-  offset-sneaking: 1.6
-
 storage:
   # 저장 방식: yaml | sqlite | mysql | h2
   type: yaml

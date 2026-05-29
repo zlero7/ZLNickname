@@ -96,12 +96,13 @@ class NicknameCommand(
             return
         }
 
-        val target = nicknameManager.findPlayer(ctx.string(1))
+        val target = nicknameManager.findOfflineByName(ctx.string(1))
             ?: run { ctx.sender.sendMessage("§c플레이어를 찾을 수 없습니다."); return }
 
         nicknameManager.resetNickname(target)
-        ctx.sender.sendMessage("§a${target.name}의 닉네임을 초기화했습니다.")
-        target.sendMessage("§e관리자에 의해 닉네임이 초기화되었습니다.")
+        val offlineNote = if (target.player == null) " §7(오프라인 - 접속 시 적용)" else ""
+        ctx.sender.sendMessage("§a${target.name}의 닉네임을 초기화했습니다.$offlineNote")
+        target.player?.sendMessage("§e관리자에 의해 닉네임이 초기화되었습니다.")
     }
 
     // ─────────────── 관리: GUI 없이 직접 설정 ───────────────
@@ -112,7 +113,7 @@ class NicknameCommand(
             return
         }
 
-        val target = nicknameManager.findPlayer(ctx.string(1))
+        val target = nicknameManager.findOfflineByName(ctx.string(1))
             ?: run { ctx.sender.sendMessage("§c플레이어를 찾을 수 없습니다."); return }
 
         val raw   = ctx.joinFrom(2)
@@ -123,9 +124,10 @@ class NicknameCommand(
         }
 
         nicknameManager.setNickname(target, raw)
-        val display = nicknameManager.getNickname(target)
-        ctx.sender.sendMessage("§a${target.name}의 닉네임을 '${display}§r§a' 으로 설정했습니다.")
-        target.sendMessage("§e관리자에 의해 닉네임이 변경되었습니다.")
+        val display = nicknameManager.getNicknameData(target.uniqueId)?.full ?: raw
+        val offlineNote = if (target.player == null) " §7(오프라인 - 접속 시 적용)" else ""
+        ctx.sender.sendMessage("§a${target.name}의 닉네임을 '${display}§r§a' 으로 설정했습니다.$offlineNote")
+        target.player?.sendMessage("§e관리자에 의해 닉네임이 변경되었습니다.")
     }
 
     // ─────────────── 저장 ───────────────

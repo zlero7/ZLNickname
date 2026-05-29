@@ -12,14 +12,6 @@ class NicknameConfig(plugin: JavaPlugin) : CRYamlConfiguration(plugin, "config.y
     /** 색상 코드 제거 후 최대 닉네임 글자 수 */
     val maxNicknameLength get() = int("nickname.max-length", 16)
 
-    // ─────────────── ArmorStand ───────────────
-
-    /** 기립 시 ArmorStand Y 오프셋 */
-    val standOffsetStanding get() = double("armor-stand.offset-standing", 1.9)
-
-    /** 웅크림 시 ArmorStand Y 오프셋 */
-    val standOffsetSneaking get() = double("armor-stand.offset-sneaking", 1.6)
-
     // ─────────────── 스토리지 ───────────────
 
     /** 저장 방식: yaml | sqlite | mysql | h2 (소문자 정규화) */

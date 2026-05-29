@@ -67,21 +67,38 @@ class CommandNicknameInterceptor(private val nicknameManager: NicknameManager) {
         val raw = event.message
         if (!raw.startsWith("/")) return
 
-        // parts[0]=명령어, parts[1]=첫 인자(대상), parts[2]=나머지
-        val parts = raw.substring(1).split(" ", limit = 3)
+        // parts[0]=명령어, parts[1]=첫 인자, parts[2]=둘째 인자, parts[3]=나머지
+        val parts = raw.substring(1).split(" ", limit = 4)
         if (parts.size < 2) return
 
         // /minecraft:tell 같은 네임스페이스 명령도 처리
         val cmdName = parts[0].lowercase().substringAfter(":")
         if (cmdName !in targetFirstCommands) return
 
-        val input = parts[1]
-        val target = nicknameManager.findPlayer(input) ?: return
+        val input1 = parts[1]
+        val target1 = nicknameManager.findPlayer(input1)
 
-        // 이미 실제 이름이면 그냥 통과
-        if (target.name.equals(input, ignoreCase = true)) return
+        // /tp <대상> <목적지> — 두 번째 인자도 플레이어 닉네임일 수 있음
+        if (cmdName in twoPlayerCommands && parts.size >= 3) {
+            val input2 = parts[2]
+            val target2 = nicknameManager.findPlayer(input2)
+
+            val arg1 = if (target1 != null && !target1.name.equals(input1, ignoreCase = true))
+                target1.name else input1
+            val arg2 = if (target2 != null && !target2.name.equals(input2, ignoreCase = true))
+                target2.name else input2
+
+            if (arg1 == input1 && arg2 == input2) return
+
+            val rest = if (parts.size > 3) " ${parts[3]}" else ""
+            event.message = "/${parts[0]} $arg1 $arg2$rest"
+            return
+        }
+
+        // 단일 대상 명령어
+        if (target1 == null || target1.name.equals(input1, ignoreCase = true)) return
 
         val rest = if (parts.size > 2) " ${parts[2]}" else ""
-        event.message = "/${parts[0]} ${target.name}$rest"
+        event.message = "/${parts[0]} ${target1.name}$rest"
     }
 }

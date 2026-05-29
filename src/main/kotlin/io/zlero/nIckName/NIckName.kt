@@ -10,6 +10,7 @@ class NicknamePlugin : CRPlugin() {
         NicknameDbStorage::class,
         NicknameManager::class,
         NicknameCommand::class,
-        CommandNicknameInterceptor::class
+        CommandNicknameInterceptor::class,
+        NicknamePlaceholderExpansion::class
     )
 }

@@ -5,25 +5,22 @@ import io.zlero.cRFramework.core.component.annotation.Setup
 import io.zlero.cRFramework.core.component.annotation.Teardown
 import io.zlero.cRFramework.listener.annotation.Subscribe
 import net.kyori.adventure.text.Component as TextComponent
+import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer
 import org.bukkit.Bukkit
-import org.bukkit.NamespacedKey
+import org.bukkit.OfflinePlayer
 import org.bukkit.command.CommandSender
-import org.bukkit.entity.ArmorStand
-import org.bukkit.entity.EntityType
 import org.bukkit.entity.Player
 import org.bukkit.event.EventPriority
 import org.bukkit.event.player.PlayerJoinEvent
-import org.bukkit.event.player.PlayerMoveEvent
 import org.bukkit.event.player.PlayerQuitEvent
 import org.bukkit.event.player.PlayerToggleSneakEvent
 import org.bukkit.event.server.TabCompleteEvent
-import org.bukkit.persistence.PersistentDataType
 import org.bukkit.scoreboard.Team
 import java.util.UUID
 
-// ─── 파일 레벨 직렬화 상수 (NicknameData에서도 접근 가능) ───
+// ─── 파일 레벨 직렬화 상수 ───
 private val LEGACY_AMPERSAND = LegacyComponentSerializer.legacyAmpersand()
 private val LEGACY_SECTION   = LegacyComponentSerializer.legacySection()
 private val PLAIN_TEXT       = PlainTextComponentSerializer.plainText()
@@ -44,14 +41,9 @@ class NicknameManager(
     }
 
     // UUID → 닉네임 데이터
-    private val nicknameMap   = mutableMapOf<UUID, NicknameData>()
+    private val nicknameMap = mutableMapOf<UUID, NicknameData>()
     // 순수 텍스트(소문자) → UUID  역방향 캐시 (O(1) 조회)
-    private val nickToUUID    = mutableMapOf<String, UUID>()
-    // UUID → ArmorStand
-    private val armorStandMap = mutableMapOf<UUID, ArmorStand>()
-
-    // PDC 키: 플러그인이 생성한 ArmorStand 식별 (서버 재시작 후 잔여 엔티티 청소용)
-    private val standKey = NamespacedKey(plugin, "nickname_stand")
+    private val nickToUUID  = mutableMapOf<String, UUID>()
 
     // ─────────────── 공개 API ───────────────
 
@@ -61,7 +53,6 @@ class NicknameManager(
      */
     fun validateNickname(raw: String): String? {
         if (raw.isBlank()) return "닉네임은 비어있을 수 없습니다."
-        // raw 자체도 길이 제한 (색상 코드 도배로 DB VARCHAR 초과 방지)
         if (raw.length > 200) return "닉네임 입력이 너무 깁니다. (최대 200자)"
         val plain = PLAIN_TEXT.serialize(LEGACY_AMPERSAND.deserialize(raw))
         if (plain.isBlank()) return "색상 코드 제거 후 닉네임이 비어있습니다."
@@ -71,32 +62,42 @@ class NicknameManager(
         return null
     }
 
-    fun setNickname(player: Player, raw: String) {
+    fun setNickname(target: OfflinePlayer, raw: String) {
+        val uuid      = target.uniqueId
         val component = LEGACY_AMPERSAND.deserialize(raw)
         val full      = LEGACY_SECTION.serialize(component)
 
-        nicknameMap[player.uniqueId]?.let { nickToUUID.remove(it.plainText().lowercase()) }
+        nicknameMap[uuid]?.let { nickToUUID.remove(it.plainText().lowercase()) }
 
         val data = NicknameData(raw, full)
-        nicknameMap[player.uniqueId] = data
-        nickToUUID[data.plainText().lowercase()] = player.uniqueId
+        nicknameMap[uuid] = data
+        nickToUUID[data.plainText().lowercase()] = uuid
 
-        player.displayName(component)
-        player.playerListName(component)
-        hideNameTag(player)
-        spawnOrUpdateArmorStand(player, component)
+        // 온라인인 경우 즉시 반영
+        (target as? Player)?.apply {
+            customName(component)           // 머리 위 닉네임 (바닐라와 동일한 렌더링)
+            isCustomNameVisible = true
+            displayName(component)          // 채팅·죽음 메시지
+            playerListName(component)       // 탭 리스트
+            hideNameTag(this)               // 기본 이름표(실제 이름) 숨김
+        }
 
-        persistSingle(player.uniqueId, data)
+        persistSingle(uuid, data)
     }
 
-    fun resetNickname(player: Player) {
-        nicknameMap.remove(player.uniqueId)?.let { nickToUUID.remove(it.plainText().lowercase()) }
-        player.displayName(null)
-        player.playerListName(null)
-        showNameTag(player)
-        removeArmorStand(player)
+    fun resetNickname(target: OfflinePlayer) {
+        val uuid = target.uniqueId
+        nicknameMap.remove(uuid)?.let { nickToUUID.remove(it.plainText().lowercase()) }
 
-        removeSingle(player.uniqueId)
+        (target as? Player)?.apply {
+            customName(null)
+            isCustomNameVisible = false
+            displayName(null)
+            playerListName(null)
+            showNameTag(this)
+        }
+
+        removeSingle(uuid)
     }
 
     private fun persistSingle(uuid: UUID, data: NicknameData) {
@@ -120,20 +121,35 @@ class NicknameManager(
     /** 원본 닉네임 (& 코드 포함, GUI 미리채우기용) */
     fun getRawNickname(player: Player): String? = nicknameMap[player.uniqueId]?.raw
 
+    /** UUID 로 닉네임 데이터 조회 (PAPI 등 외부 연동용) */
+    fun getNicknameData(uuid: UUID): NicknameData? = nicknameMap[uuid]
+
     /** 실제 이름 또는 닉네임(색상 제거)으로 온라인 플레이어 검색 */
     fun findPlayer(nameOrNick: String): Player? =
         Bukkit.getPlayerExact(nameOrNick)
             ?: nickToUUID[nameOrNick.lowercase()]?.let { Bukkit.getPlayer(it) }
 
+    /**
+     * 실제 이름 또는 닉네임으로 온/오프라인 플레이어 검색.
+     * 오프라인은 서버 캐시에 등록된(hasPlayedBefore) 플레이어만 반환합니다.
+     */
+    fun findOfflineByName(name: String): OfflinePlayer? {
+        findPlayer(name)?.let { return it }
+        @Suppress("DEPRECATION")
+        val op = Bukkit.getOfflinePlayer(name)
+        return if (op.hasPlayedBefore()) op else null
+    }
+
     // ─────────────── 라이프사이클 ───────────────
 
     @Setup
     fun loadNicknames() {
-        // 이전 버전(isPersistent=true)에서 저장된 잔여 ArmorStand 제거
+        // 이전 버전(ArmorStand 기반)에서 남아 있을 수 있는 잔여 엔티티 제거
+        val legacyKey = org.bukkit.NamespacedKey(plugin, "nickname_stand")
         Bukkit.getWorlds().forEach { world ->
             world.entities
-                .filterIsInstance<ArmorStand>()
-                .filter { it.persistentDataContainer.has(standKey, PersistentDataType.BYTE) }
+                .filterIsInstance<org.bukkit.entity.ArmorStand>()
+                .filter { it.persistentDataContainer.has(legacyKey, org.bukkit.persistence.PersistentDataType.BYTE) }
                 .forEach { it.remove() }
         }
 
@@ -154,9 +170,11 @@ class NicknameManager(
 
             Bukkit.getPlayer(uuid)?.apply {
                 val comp = data.toTextComponent()
+                customName(comp)
+                isCustomNameVisible = true
                 displayName(comp)
                 playerListName(comp)
-                spawnOrUpdateArmorStand(this, comp)
+                hideNameTag(this)
             }
         }
         plugin.logger.info("닉네임 ${nicknameMap.size}개 로드 완료")
@@ -164,8 +182,6 @@ class NicknameManager(
 
     @Teardown
     fun onDisable() {
-        armorStandMap.values.forEach { it.remove() }
-        armorStandMap.clear()
         saveNicknames()
     }
 
@@ -173,31 +189,27 @@ class NicknameManager(
         // 0. 현재 데이터를 기존 스토리지에 먼저 저장 (리로드 중 유실 방지)
         saveNicknames()
 
-        // 1. 기존 ArmorStand 제거 + 플레이어 디스플레이 이름 초기화
-        armorStandMap.forEach { (uuid, stand) ->
-            stand.remove()
-            Bukkit.getPlayer(uuid)?.apply {
-                displayName(null)
-                playerListName(null)
-            }
+        // 1. 닉네임이 설정된 온라인 플레이어 원복
+        nicknameMap.keys.mapNotNull { Bukkit.getPlayer(it) }.forEach { player ->
+            player.customName(null)
+            player.isCustomNameVisible = false
+            player.displayName(null)
+            player.playerListName(null)
+            showNameTag(player)
         }
-        armorStandMap.clear()
 
-        // 2. 닉네임이 설정된 온라인 플레이어 이름표 원복
-        nicknameMap.keys.mapNotNull { Bukkit.getPlayer(it) }.forEach { showNameTag(it) }
-
-        // 3. 닉네임 맵 초기화
+        // 2. 닉네임 맵 초기화
         nicknameMap.clear()
         nickToUUID.clear()
 
-        // 4. config.yml 디스크에서 재로드 (storage.type 변경 등 반영)
+        // 3. config.yml 디스크에서 재로드 (storage.type 변경 등 반영)
         config.reload()
 
-        // 5. DB 스토리지 재연결 (storage.type 이 변경된 경우 새 파일/연결 생성)
+        // 4. DB 스토리지 재연결 (storage.type 이 변경된 경우 새 파일/연결 생성)
         dbStorage.disconnect()
         dbStorage.connect()
 
-        // 6. 스토리지에서 재로드 (온라인 플레이어에도 즉시 적용)
+        // 5. 스토리지에서 재로드 (온라인 플레이어에도 즉시 적용)
         loadNicknames()
     }
 
@@ -220,40 +232,36 @@ class NicknameManager(
     fun onJoin(event: PlayerJoinEvent) {
         val joiningPlayer = event.player
 
-        armorStandMap.forEach { (ownerUUID, stand) ->
-            if (ownerUUID != joiningPlayer.uniqueId) {
-                joiningPlayer.showEntity(plugin, stand)
-            }
-        }
-
         nicknameMap[joiningPlayer.uniqueId]?.let { data ->
             val comp = data.toTextComponent()
+            joiningPlayer.customName(comp)
+            joiningPlayer.isCustomNameVisible = true
             joiningPlayer.displayName(comp)
             joiningPlayer.playerListName(comp)
-            spawnOrUpdateArmorStand(joiningPlayer, comp)
+            hideNameTag(joiningPlayer)
+
+            event.joinMessage(
+                TextComponent.translatable("multiplayer.player.joined", comp)
+                    .color(NamedTextColor.YELLOW)
+            )
         }
     }
 
     @Subscribe
-    fun onQuit(event: PlayerQuitEvent) = removeArmorStand(event.player)
-
-    @Subscribe
-    fun onMove(event: PlayerMoveEvent) {
-        val from = event.from
-        val to   = event.to
-        if (from.x == to.x && from.y == to.y && from.z == to.z) return
-
-        val stand = armorStandMap[event.player.uniqueId] ?: return
-        val yOffset = if (event.player.isSneaking) config.standOffsetSneaking else config.standOffsetStanding
-        stand.teleport(to.clone().add(0.0, yOffset, 0.0))
+    fun onQuit(event: PlayerQuitEvent) {
+        nicknameMap[event.player.uniqueId]?.let { data ->
+            event.quitMessage(
+                TextComponent.translatable("multiplayer.player.left", data.toTextComponent())
+                    .color(NamedTextColor.YELLOW)
+            )
+        }
     }
 
     @Subscribe
     fun onSneak(event: PlayerToggleSneakEvent) {
-        val stand = armorStandMap[event.player.uniqueId] ?: return
-        val yOffset = if (event.isSneaking) config.standOffsetSneaking else config.standOffsetStanding
-        stand.teleport(event.player.location.add(0.0, yOffset, 0.0))
-        stand.isCustomNameVisible = !event.isSneaking
+        if (nicknameMap[event.player.uniqueId] == null) return
+        // 바닐라와 동일하게 웅크릴 때 닉네임 숨김
+        event.player.isCustomNameVisible = !event.isSneaking
     }
 
     /** /닉네임 명령어 탭 완성 (admin 전용) */
@@ -277,8 +285,9 @@ class NicknameManager(
         return when (args.size) {
             1 -> subs.filter { it.startsWith(current) }
             2 -> when (args[0]) {
-                "설정", "초기화", "관리" -> onlineDisplayNames(current)
-                else                    -> emptyList()
+                "설정"          -> onlineDisplayNames(current)
+                "초기화", "관리" -> allKnownPlayerNames(current)
+                else            -> emptyList()
             }
             3 -> if (args[0] == "관리") {
                 findPlayer(args[1])
@@ -297,32 +306,19 @@ class NicknameManager(
             .map { p -> nicknameMap[p.uniqueId]?.plainText() ?: p.name }
             .filter { it.startsWith(prefix, ignoreCase = true) }
 
-    // ─────────────── ArmorStand 관리 ───────────────
-
-    private fun spawnOrUpdateArmorStand(player: Player, nickname: TextComponent) {
-        removeArmorStand(player)
-
-        val sneaking = player.isSneaking
-        val yOffset  = if (sneaking) config.standOffsetSneaking else config.standOffsetStanding
-
-        val stand = (player.world.spawnEntity(
-            player.location.clone().add(0.0, yOffset, 0.0), EntityType.ARMOR_STAND
-        ) as ArmorStand).apply {
-            isCustomNameVisible = !sneaking
-            customName(nickname)
-            isInvisible  = true
-            isMarker     = true
-            isSmall      = true
-            setGravity(false)
-            isPersistent = false
-            persistentDataContainer.set(standKey, PersistentDataType.BYTE, 1)
-        }
-        armorStandMap[player.uniqueId] = stand
-        player.hideEntity(plugin, stand)
-    }
-
-    private fun removeArmorStand(player: Player) {
-        armorStandMap.remove(player.uniqueId)?.remove()
+    /** 온라인 플레이어(닉네임 우선) + 오프라인이지만 닉네임이 저장된 플레이어(실제 이름)를 반환합니다. */
+    private fun allKnownPlayerNames(prefix: String): List<String> {
+        val result = LinkedHashSet<String>()
+        Bukkit.getOnlinePlayers()
+            .map { p -> nicknameMap[p.uniqueId]?.plainText() ?: p.name }
+            .filter { it.startsWith(prefix, ignoreCase = true) }
+            .forEach { result.add(it) }
+        nicknameMap.keys
+            .filter { uuid -> Bukkit.getPlayer(uuid) == null }
+            .mapNotNull { uuid -> Bukkit.getOfflinePlayer(uuid).name }
+            .filter { it.startsWith(prefix, ignoreCase = true) }
+            .forEach { result.add(it) }
+        return result.toList()
     }
 
     // ─────────────── 이름표 숨김/복원 ───────────────
